@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# ==============================================================================
+# Pangenomic Analysis Workflow for Mesorhizobium (21 Genomes)
+# Using anvi'o 8
+# ==============================================================================
+
+# 1. GENOME PREPARATION AND ANNOTATION
+# Iterate through each FASTA file to create annotated contigs databases
+for file in *.fasta; do
+    name=$(basename $file .fasta)
+    echo "-------------------------------------------------------"
+    echo "PROCESSING GENOME: $name"
+    echo "-------------------------------------------------------"
+    
+    # Reformat headers for anvi'o compatibility
+    anvi-script-reformat-fasta $file -o ${name}_fixed.fa --simplify-names
+    
+    # Create the contigs database
+    anvi-gen-contigs-database -f ${name}_fixed.fa -o $name.db -n "Genome_$name"
+    
+    # Identify universal single-copy genes (HMMs)
+    anvi-run-hmms -c $name.db --num-threads 8
+    
+    # Functional annotation using NCBI COGs
+    anvi-run-ncbi-cogs -c $name.db --num-threads 8
+done
+
+# 2. GENERATING GENOME STORAGE
+# Consolidate all individual databases into one storage unit
+# Requires a pre-made 'external-genomes.txt' file
+anvi-gen-genomes-storage -e external-genomes.txt -o Mesorhizobium_21-GENOMES.db
+
+# 3. PANGENOME CALCULATION
+# Compute gene clusters using NCBI BLAST
+anvi-pan-genome -g Mesorhizobium_21-GENOMES.db \
+                --project-name "Mesorhizobium_21_Pan" \
+                --num-threads 8 \
+                --use-ncbi-blast
+
+# 4. COMPUTING GENOME SIMILARITY (ANI)
+# Calculate Average Nucleotide Identity and integrate into the PAN database
+anvi-compute-genome-similarity -e external-genomes.txt \
+                               -p Mesorhizobium_21_Pan/Mesorhizobium_21_Pan-PAN.db \
+                               -o ANI_Results \
+                               --program fastANI \
+                               --num-threads 8
+
+# 5. DATA EXPORT PREPARATION
+# Create a default collection to enable data extraction
+anvi-script-add-default-collection -p Mesorhizobium_21_Pan/Mesorhizobium_21_Pan-PAN.db \
+                                   -C DEFAULT
+
+# 6. SUMMARY AND STATISTICS
+# Generate final TSV summary files and sequence data
+anvi-summarize -p Mesorhizobium_21_Pan/Mesorhizobium_21_Pan-PAN.db \
+               -g Mesorhizobium_21-GENOMES.db \
+               -C DEFAULT \
+               -o SUMMARY_MESORHIZOBIUM
+
+# 7. INTERACTIVE VISUALIZATION
+# Launch the web interface for manual inspection and figure generation
+anvi-display-pan -g Mesorhizobium_21-GENOMES.db \
+                 -p Mesorhizobium_21_Pan/Mesorhizobium_21_Pan-PAN.db \
+                 -I 0.0.0.0 -P 8080 --server-only
+
+                 
